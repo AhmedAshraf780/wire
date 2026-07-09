@@ -1,9 +1,9 @@
 package wire
 
-type Request struct {
+type Request[T any] struct {
 	Method  string
 	Path    string
 	Version string
 	Headers map[string]string
-	Body    []byte
+	Body    T
 }

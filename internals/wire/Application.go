@@ -11,20 +11,15 @@ import (
 	"sync"
 )
 
-type WireHandler struct {
-	Path     string
-	Callback func(Request, *Response)
-}
-
 type Application struct {
-	Handlers map[string]*WireHandler
+	Handlers map[string]Handler
 }
 
 func NewApplication() *Application {
 	RequestsQueue = make(chan RequestMessage, 100)
 	ResponseQueue = make(chan ResponseMessage, 100)
 	return &Application{
-		Handlers: make(map[string]*WireHandler),
+		Handlers: make(map[string]Handler),
 	}
 }
 
@@ -62,7 +57,7 @@ func (app *Application) handleConnection(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	for {
 		// request line
-		request := Request{
+		request := Request[[]byte]{
 			Headers: make(map[string]string),
 		}
 
@@ -114,7 +109,6 @@ func (app *Application) handleConnection(conn net.Conn) {
 		_, err = io.ReadFull(reader, body)
 		if err != nil {
 			log.Println(err)
-			// TODO: send http error response
 			return
 		}
 		request.Body = body
@@ -126,10 +120,33 @@ func (app *Application) handleConnection(conn net.Conn) {
 	}
 }
 
-func (app *Application) GET(path string, callback func(Request, *Response)) {
-	handler := &WireHandler{
+func GET[T any, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+	handler := &WireHandler[T, V]{
 		path,
 		callback,
 	}
 	app.Handlers[utils.GenerateHandlerKey("GET", path)] = handler
+}
+
+func POST[T any, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+	handler := &WireHandler[T, V]{
+		path,
+		callback,
+	}
+	app.Handlers[utils.GenerateHandlerKey("POST", path)] = handler
+}
+
+func PUT[T any, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+	handler := &WireHandler[T, V]{
+		path,
+		callback,
+	}
+	app.Handlers[utils.GenerateHandlerKey("PUT", path)] = handler
+}
+func DELETE[T any, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+	handler := &WireHandler[T, V]{
+		path,
+		callback,
+	}
+	app.Handlers[utils.GenerateHandlerKey("DELETE", path)] = handler
 }

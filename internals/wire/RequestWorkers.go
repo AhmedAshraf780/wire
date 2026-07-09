@@ -17,7 +17,6 @@ func NewRequestWorker(app *Application) *RequestWorker {
 func (r *RequestWorker) Work(wg *sync.WaitGroup) {
 	defer wg.Done()
 	for t := range RequestsQueue {
-		log.Println("I am working on task", t.Request.Path)
 		key := utils.GenerateHandlerKey(t.Request.Method, t.Request.Path)
 		handler, ok := r.app.Handlers[key]
 		if !ok {
@@ -26,26 +25,26 @@ func (r *RequestWorker) Work(wg *sync.WaitGroup) {
 			// TODO: add mutex here
 			ResponseQueue <- ResponseMessage{
 				Conn: t.Conn,
-				Response: Response{
+				Response: Response[[]byte]{
 					// TODO: add standard errors
 					StatusCode: 404,
-					Body:       []byte{},
+					Body:       []byte("Method or path not found"),
 					// TODO: Handle headers
-					Headers: utils.DefaultHeaders(),
+					Headers: map[string]string{},
 					Version: t.Request.Version,
 				},
 			}
 			continue
 		}
 		// execute the handler
-		resp := &Response{
+		resp := &Response[any]{
 			Version: t.Request.Version,
 			Headers: map[string]string{},
 		}
-		handler.Callback(t.Request, resp)
+		rawResponse, _ := handler.Handle(t.Request, resp)
 		ResponseQueue <- ResponseMessage{
 			Conn:     t.Conn,
-			Response: *resp,
+			Response: *rawResponse,
 		}
 	}
 }

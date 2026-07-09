@@ -5,7 +5,7 @@ import (
 )
 
 type RequestMessage struct {
-	Request Request
+	Request Request[[]byte]
 	Conn    net.Conn
 }
 
