@@ -7,52 +7,61 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 )
 
+type Route struct {
+	Method   string
+	Pattern  string
+	Segments []string
+	Handler  Handler
+}
 type Application struct {
-	Handlers map[string]Handler
+	staticRoutes  map[string]Handler
+	dynamicRoutes []Route
 }
 
 func NewApplication() *Application {
-	RequestsQueue = make(chan RequestMessage, 100)
-	ResponseQueue = make(chan ResponseMessage, 100)
 	return &Application{
-		Handlers: make(map[string]Handler),
+		staticRoutes: make(map[string]Handler),
 	}
 }
 
 func (app *Application) Listen(port int) {
+	// printing static and dynamic routes
+	for _, route := range app.dynamicRoutes {
+		for _, segment := range route.Segments {
+			print(segment)
+		}
+	}
+	for p, _ := range app.staticRoutes {
+		println(p)
+	}
 	addr := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		panic(err)
 	}
 
-	// runs the workers
-	ReqWorker := NewRequestWorker(app)
-	ResWorker := NewResponseWorker(app)
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go ReqWorker.Work(wg)
-	wg.Add(1)
-	go ResWorker.Work(wg)
-	defer wg.Wait()
 	defer listener.Close()
 
 	log.Println("Listening on " + addr)
+	wg := &sync.WaitGroup{}
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			panic(err)
 		}
-		go app.handleConnection(conn)
+		wg.Add(1)
+		go app.handleConnection(conn, wg)
 	}
 }
 
-func (app *Application) handleConnection(conn net.Conn) {
-	log.Println("Handling connection from ", conn.RemoteAddr())
+func (app *Application) handleConnection(conn net.Conn, wg *sync.WaitGroup) {
+	defer wg.Done()
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	for {
@@ -63,16 +72,13 @@ func (app *Application) handleConnection(conn net.Conn) {
 
 		line, err := reader.ReadString('\n')
 		if err == io.EOF {
-			log.Println(err)
 			return
 		}
 		if err != nil {
-			log.Println(err)
 			return
 		}
 		tokens, err := utils.ParseRequestLine(line)
 		if err != nil {
-			log.Println(err)
 			// TODO: send http response
 			return
 		}
@@ -80,7 +86,31 @@ func (app *Application) handleConnection(conn net.Conn) {
 		request.Method = tokens[0]
 		request.Path = tokens[1]
 		request.Version = tokens[2]
-
+		// here we can check if we have a handler for this path
+		key := utils.GenerateHandlerKey(request.Method, request.Path)
+		handler, ok := app.staticRoutes[key]
+		d := -1
+		if !ok {
+			// we send an http error response
+			// check in dynamic routes
+			params, q, idx, meth := CheckDynamicPath(app.dynamicRoutes, request.Path)
+			if idx != -1 && meth == request.Method {
+				d = idx
+				request.Query = q
+				request.Params = params
+				goto label1
+			}
+			resp := utils.MakeResponse(http.StatusMethodNotAllowed, "No method exists", []byte("Method or path not found"), map[string]string{}, request.Version)
+			_, err := conn.Write(resp)
+			if err != nil {
+				log.Println(err)
+			}
+			return
+		}
+	label1:
+		if d != -1 {
+			handler = app.dynamicRoutes[d].Handler
+		}
 		// request headers
 		for {
 			line, err = reader.ReadString('\n')
@@ -112,41 +142,97 @@ func (app *Application) handleConnection(conn net.Conn) {
 			return
 		}
 		request.Body = body
-		RequestsQueue <- RequestMessage{
-			Request: request,
-			Conn:    conn,
+		// here we need to check the handler mode
+		err = handler.Handle(request, &Response[any]{
+			Headers: map[string]string{},
+		}, conn)
+		if err != nil {
+			log.Println(err)
+			return
 		}
-		log.Println("Received request from ", conn.RemoteAddr())
 	}
 }
 
-func GET[T any, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+func GET[T, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
 	handler := &WireHandler[T, V]{
-		path,
-		callback,
+		Path:     path,
+		Callback: callback,
 	}
-	app.Handlers[utils.GenerateHandlerKey("GET", path)] = handler
+	if utils.StaticPath(path) {
+		app.staticRoutes["GET:"+path] = handler
+	} else {
+		app.dynamicRoutes = append(app.dynamicRoutes, Route{
+			Method:   "GET",
+			Pattern:  path,
+			Segments: strings.Split(path, "/"),
+			Handler:  handler,
+		})
+	}
 }
 
-func POST[T any, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+func POST[T, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
 	handler := &WireHandler[T, V]{
-		path,
-		callback,
+		Path:     path,
+		Callback: callback,
 	}
-	app.Handlers[utils.GenerateHandlerKey("POST", path)] = handler
+	if utils.StaticPath(path) {
+		app.staticRoutes["POST:"+path] = handler
+	} else {
+		app.dynamicRoutes = append(app.dynamicRoutes, Route{
+			Method:   "POST",
+			Pattern:  path,
+			Segments: strings.Split(path, "/"),
+			Handler:  handler,
+		})
+	}
+}
+func PUT[T, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+	handler := &WireHandler[T, V]{
+		Path:     path,
+		Callback: callback,
+	}
+	if utils.StaticPath(path) {
+		app.staticRoutes["POST:"+path] = handler
+	} else {
+		app.dynamicRoutes = append(app.dynamicRoutes, Route{
+			Method:   "POST",
+			Pattern:  path,
+			Segments: strings.Split(path, "/"),
+			Handler:  handler,
+		})
+	}
+}
+func DELETE[T, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+	handler := &WireHandler[T, V]{
+		Path:     path,
+		Callback: callback,
+	}
+
+	if utils.StaticPath(path) {
+		app.staticRoutes["POST:"+path] = handler
+	} else {
+		app.dynamicRoutes = append(app.dynamicRoutes, Route{
+			Method:   "POST",
+			Pattern:  path,
+			Segments: strings.Split(path, "/"),
+			Handler:  handler,
+		})
+	}
 }
 
-func PUT[T any, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
+func PATCH[T, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
 	handler := &WireHandler[T, V]{
-		path,
-		callback,
+		Path:     path,
+		Callback: callback,
 	}
-	app.Handlers[utils.GenerateHandlerKey("PUT", path)] = handler
-}
-func DELETE[T any, V any](app *Application, path string, callback func(Request[T], *Response[V])) {
-	handler := &WireHandler[T, V]{
-		path,
-		callback,
+	if utils.StaticPath(path) {
+		app.staticRoutes["POST:"+path] = handler
+	} else {
+		app.dynamicRoutes = append(app.dynamicRoutes, Route{
+			Method:   "POST",
+			Pattern:  path,
+			Segments: strings.Split(path, "/"),
+			Handler:  handler,
+		})
 	}
-	app.Handlers[utils.GenerateHandlerKey("DELETE", path)] = handler
 }

@@ -13,6 +13,7 @@ func MakeResponse(status int, statusMsg string, body []byte, headers map[string]
 	)
 	bodyLength := len(body)
 	headers["Content-Length"] = strconv.Itoa(bodyLength)
+	headers["Connection"] = "keep-alive"
 	headers["Content-Type"] = "application/json"
 	for key, value := range headers {
 		resp += fmt.Sprintf("%s: %s\r\n", key, value)
