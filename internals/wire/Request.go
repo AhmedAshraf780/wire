@@ -12,46 +12,28 @@ type Request[T any] struct {
 	Version string
 	Headers map[string]string
 	Body    T
+	Context map[string]interface{}
 }
 
 type EmptyBody struct{}
-type EmptyParams struct{}
-type EmptyQuery struct{}
 
-func CheckDynamicPath(routes []Route, path string) (map[string]string, map[string]string, int, string) {
+func CheckDynamicPath(routes []Route, path string) (map[string]string, string, int, string) {
 	for i, r := range routes {
-		params, queries, ok := match(r.Segments, path)
+		params, ok := match(r.Segments, path)
 		if ok {
-			return params, queries, i, r.Method
+			return params, r.Pattern, i, r.Method
 		}
 	}
 
-	return nil, nil, -1, ""
+	return nil, "", -1, ""
 }
 
-func match(segments []string, reqPath string) (map[string]string, map[string]string, bool) {
+func match(segments []string, path string) (map[string]string, bool) {
 	params := make(map[string]string)
-	queries := make(map[string]string)
-
-	// Split path and query
-	path, query, _ := strings.Cut(reqPath, "?")
-
-	// Parse query parameters
-	if query != "" {
-		for _, pair := range strings.Split(query, "&") {
-			if pair == "" {
-				continue
-			}
-
-			key, value, _ := strings.Cut(pair, "=")
-			queries[key] = value
-		}
-	}
-
 	req := strings.Split(strings.Trim(path, "/"), "/")
 
 	if len(req) != len(segments)-1 {
-		return nil, nil, false
+		return nil, false
 	}
 
 	for i, j := 0, 1; i < len(req); i, j = i+1, j+1 {
@@ -63,11 +45,11 @@ func match(segments []string, reqPath string) (map[string]string, map[string]str
 		}
 
 		if s != req[i] {
-			return nil, nil, false
+			return nil, false
 		}
 	}
 
-	return params, queries, true
+	return params, true
 }
 
 func ParseQuery(path string) map[string]string {

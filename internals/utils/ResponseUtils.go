@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"strconv"
+	"time"
 )
 
 func MakeResponse(status int, statusMsg string, body []byte, headers map[string]string, version string) []byte {
@@ -12,9 +13,14 @@ func MakeResponse(status int, statusMsg string, body []byte, headers map[string]
 		statusMsg,
 	)
 	bodyLength := len(body)
-	headers["Content-Length"] = strconv.Itoa(bodyLength)
 	headers["Connection"] = "keep-alive"
+	headers["Content-Length"] = strconv.Itoa(bodyLength)
 	headers["Content-Type"] = "application/json"
+	headers["Accept"] = "application/json"
+	headers["Accept-Charset"] = "utf-8"
+	headers["Accept-Encoding"] = "gzip"
+	headers["server"] = "Wire/1.0"
+	headers["Date"] = HTTPDate()
 	for key, value := range headers {
 		resp += fmt.Sprintf("%s: %s\r\n", key, value)
 	}
@@ -23,9 +29,8 @@ func MakeResponse(status int, statusMsg string, body []byte, headers map[string]
 	return []byte(resp)
 }
 
-func DefaultHeaders() map[string]string {
-	headers := make(map[string]string)
-	headers["Content-Type"] = "text/plain; charset=utf-8"
-	headers["Content-Length"] = "0"
-	return headers
+const HTTPDateFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
+
+func HTTPDate() string {
+	return time.Now().UTC().Format(HTTPDateFormat)
 }

@@ -2,21 +2,30 @@ package wire
 
 import (
 	"encoding/json"
-	"httpserver/internals/utils"
+	"errors"
 	"net"
 	"net/http"
+
+	"github.com/AhmedAshraf780/wire/internals/utils"
 )
 
 type Handler interface {
-	Handle(raw Request[[]byte], resp *Response[any], conn net.Conn) error
+	Handle(raw *Request[[]byte], resp *Response[any], conn net.Conn) error
 }
 
 type WireHandler[TReq, TRes any] struct {
 	Path     string
-	Callback func(Request[TReq], *Response[TRes])
+	Callback func(*Request[TReq], *Response[TRes]) error
 }
 
-func (w *WireHandler[TReq, TRes]) Handle(raw Request[[]byte], resp *Response[any], conn net.Conn) error {
+func (w *WireHandler[TReq, TRes]) Handle(raw *Request[[]byte], resp *Response[any], conn net.Conn) error {
+	// check if connection still exists
+	value, exist := raw.Headers["Connection"]
+	if exist && (value == "Close" || value == "close") {
+		conn.Close()
+		return nil
+	}
+
 	var body TReq
 
 	_, ok := any(body).(EmptyBody)
@@ -30,33 +39,25 @@ func (w *WireHandler[TReq, TRes]) Handle(raw Request[[]byte], resp *Response[any
 		}
 	}
 
-	// check the mode first
 	req := Request[TReq]{
 		Path:    raw.Path,
 		Version: raw.Version,
 		Headers: raw.Headers,
 		Method:  raw.Method,
+		Params:  raw.Params,
+		Query:   raw.Query,
 		Body:    body,
+		Context: raw.Context,
 	}
-
-	// extract the params from the path
-	params, err := utils.ExtractParams(w.Path, req.Path)
-	if err != nil {
-		resp := utils.MakeResponse(
-			http.StatusBadRequest, "Invalid json body", []byte("Invalid request params"), map[string]string{}, raw.Version)
-		conn.Write(resp)
-		return err
-	}
-	req.Params = params
-
-	// extract the query
-	quries := utils.ParseQuery(req.Path)
-	req.Query = quries
 
 	TypedResp := Response[TRes]{
 		Headers: resp.Headers,
 	}
-	w.Callback(req, &TypedResp)
+	err := w.Callback(&req, &TypedResp)
+	if err != nil && errors.Is(err, ErrNext) {
+		raw.Context = req.Context
+		return ErrNext
+	}
 
 	b, err := json.Marshal(TypedResp.Body)
 	if err != nil {
