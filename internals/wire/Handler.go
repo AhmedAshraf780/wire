@@ -9,16 +9,16 @@ import (
 	"github.com/AhmedAshraf780/wire/internals/utils"
 )
 
-type Handler interface {
+type handler interface {
 	Handle(raw *Request[[]byte], resp *Response[any], conn net.Conn) error
 }
 
-type WireHandler[TReq, TRes any] struct {
+type wireHandler[TReq, TRes any] struct {
 	Path     string
 	Callback func(*Request[TReq], *Response[TRes]) error
 }
 
-func (w *WireHandler[TReq, TRes]) Handle(raw *Request[[]byte], resp *Response[any], conn net.Conn) error {
+func (w *wireHandler[TReq, TRes]) Handle(raw *Request[[]byte], resp *Response[any], conn net.Conn) error {
 	// check if connection still exists
 	value, exist := raw.Headers["Connection"]
 	if exist && (value == "Close" || value == "close") {

@@ -65,7 +65,7 @@ func (app *Application) handleConnection(conn net.Conn, wg *sync.WaitGroup) {
 		// here we can check if we have a handler for this path
 		path, query, found := strings.Cut(tokens[1], "?")
 		if found {
-			request.Query = ParseQuery(query)
+			request.Query = parseQuery(query)
 		}
 		key := utils.GenerateHandlerKey(request.Method, path)
 		_, ok := app.staticRoutes[key]
@@ -73,7 +73,7 @@ func (app *Application) handleConnection(conn net.Conn, wg *sync.WaitGroup) {
 		orgpath := request.Path
 		if !ok {
 			// check in dynamic routes
-			params, org, idx, meth := CheckDynamicPath(app.dynamicRoutes, path)
+			params, org, idx, meth := checkDynamicPath(app.dynamicRoutes, path)
 			if idx != -1 && meth == request.Method {
 				d = idx
 				request.Params = params
@@ -141,7 +141,8 @@ func (app *Application) handleRequest(request Request[[]byte], path string, conn
 		}
 	}
 
-	middlewares, ok := app.middlewares[path]
+	key := utils.GenerateHandlerKey(request.Method, path)
+	middlewares, ok := app.middlewares[key]
 	if !ok {
 		return
 	}

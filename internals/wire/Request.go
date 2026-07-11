@@ -17,7 +17,7 @@ type Request[T any] struct {
 
 type EmptyBody struct{}
 
-func CheckDynamicPath(routes []Route, path string) (map[string]string, string, int, string) {
+func checkDynamicPath(routes []route, path string) (map[string]string, string, int, string) {
 	for i, r := range routes {
 		params, ok := match(r.Segments, path)
 		if ok {
@@ -52,7 +52,7 @@ func match(segments []string, path string) (map[string]string, bool) {
 	return params, true
 }
 
-func ParseQuery(path string) map[string]string {
+func parseQuery(path string) map[string]string {
 	params := make(map[string]string)
 
 	query := strings.TrimPrefix(path, "?")
