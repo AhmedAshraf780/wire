@@ -1,6 +1,9 @@
 package main
 
 import (
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/AhmedAshraf780/wire/internals/wire"
 )
 
@@ -15,52 +18,32 @@ type responseType struct {
 	Users   []User `json:"users"`
 }
 
+var Users []User
+
 func main() {
+	// wire
 	app := wire.NewApplication()
-	wire.USE(app, auth)
-	wire.GET(app, "/users/:id/emails/:email", first, Second)
+	wire.POST(app, "/users", createUser)
 	app.Listen(3000)
+	//http.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+	//	var u User
+	//	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
+	//		http.Error(w, err.Error(), http.StatusBadRequest)
+	//	}
+	//	Users = append(Users, u)
+	//	w.Write([]byte("Users were added successfully"))
+	//})
+	//http.ListenAndServe(":3000", nil)
 }
 
-func first(req *wire.Request[wire.EmptyBody], resp *wire.Response[User]) error {
-	req.Context["User"] = "Hend roshdy"
-	return wire.ErrNext
-}
-
-func auth(req *wire.Request[wire.EmptyBody], resp *wire.Response[User]) error {
-	req.Context["token"] = "verysecrettoken"
-	return wire.ErrNext
-}
-
-//	func third(req *wire.Request[wire.EmptyBody], resp *wire.Response[User]) error {
-//		user := req.Context["token"].(string)
-//		req.Context["Email"] = user + "@gmail.com"
-//		return wire.ErrNext
-//	}
-
-func Second(req *wire.Request[wire.EmptyBody], resp *wire.Response[User]) error {
-	token, ok := req.Context["token"].(string)
-	if !ok {
-		return resp.Write(500, User{Name: "undefined", Email: "undefined"})
-	}
-	id, ok := req.Params["id"]
-	if !ok {
-		return resp.Write(500, User{Name: "You missed id param", Email: "undefined"})
-	}
-	email, ok := req.Params["email"]
-	if !ok {
-		return resp.Write(500, User{Name: "You missed email param", Email: "undefined"})
-	}
-
-	user := User{
-		Name:  id + token,
-		Email: email,
-	}
-
-	b, ok := req.Query["bool"]
-	if !ok {
-		return resp.Write(500, User{Name: "You missed bool Query", Email: "undefined"})
-	}
-	println(b)
-	return resp.Write(200, user)
+func createUser(req *wire.Request[User], resp *wire.Response[responseType]) error {
+	Users = append(Users, User{
+		Name:  req.Body.Name,
+		Email: req.Body.Email,
+	})
+	return resp.Write(http.StatusCreated, responseType{
+		Ok:      true,
+		Message: "user created",
+		Users:   Users,
+	})
 }

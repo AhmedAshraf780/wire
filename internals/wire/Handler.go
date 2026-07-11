@@ -22,6 +22,8 @@ func (w *wireHandler[TReq, TRes]) Handle(raw *Request[[]byte], resp *Response[an
 	// check if connection still exists
 	value, exist := raw.Headers["Connection"]
 	if exist && (value == "Close" || value == "close") {
+		println("Close connection")
+		resp.SetHeader("Connection", "close")
 		conn.Close()
 		return nil
 	}
@@ -31,10 +33,13 @@ func (w *wireHandler[TReq, TRes]) Handle(raw *Request[[]byte], resp *Response[an
 	_, ok := any(body).(EmptyBody)
 	if !ok {
 		if err := json.Unmarshal(raw.Body, &body); err != nil {
-			resp := utils.MakeResponse(
+			println("FAILED TO MARSHALING: ", err)
+			err := utils.WriteResponse(conn,
 				http.StatusBadRequest, "Invalid json body", []byte("Invalid json body"), map[string]string{}, raw.Version,
 			)
-			conn.Write(resp)
+			if err != nil {
+				println("FAILED TO WRITE RESPONSE: ", err)
+			}
 			return err
 		}
 	}
@@ -61,12 +66,17 @@ func (w *wireHandler[TReq, TRes]) Handle(raw *Request[[]byte], resp *Response[an
 
 	b, err := json.Marshal(TypedResp.Body)
 	if err != nil {
-		resp := utils.MakeResponse(
-			http.StatusBadRequest, "Invalid json body", []byte("Invalid json body"), map[string]string{}, raw.Version)
-		conn.Write(resp)
+		println("FAILED TO MARSHALING: ", err)
+		err := utils.WriteResponse(conn,
+			http.StatusInternalServerError, "Something Went Wrong", []byte("Something Went Wrong"), map[string]string{}, raw.Version)
+		if err != nil {
+			println("FAILED TO WRITE RESPONSE: ", err)
+		}
 		return err
 	}
-	res := utils.MakeResponse(TypedResp.StatusCode, "success", b, TypedResp.Headers, raw.Version)
-	conn.Write(res)
+	err = utils.WriteResponse(conn, TypedResp.StatusCode, "success", b, TypedResp.Headers, raw.Version)
+	if err != nil {
+		println("FAILED TO WRITE RESPONSE: ", err)
+	}
 	return nil
 }
