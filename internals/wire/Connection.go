@@ -7,8 +7,6 @@ import (
 	"log"
 	"net"
 	"time"
-
-	"github.com/AhmedAshraf780/wire/internals/utils"
 )
 
 type Client struct {
@@ -28,7 +26,6 @@ func (app *Application) Listen(port int) {
 
 	log.Println("Listening on " + addr)
 
-	i := 0
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -37,8 +34,6 @@ func (app *Application) Listen(port int) {
 		}
 
 		go app.handleConnection(Client{conn, false})
-		println("Accepting connection ", i)
-		i++
 	}
 }
 
@@ -79,7 +74,7 @@ func (app *Application) handleRequest(request *Request[[]byte], path string, cli
 		}
 	}
 
-	key := utils.GenerateHandlerKey(request.Method, path)
+	key := generateHandlerKey(request.Method, path)
 	middlewares, ok := app.middlewares[key]
 	if !ok {
 		return

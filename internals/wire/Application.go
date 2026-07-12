@@ -3,8 +3,6 @@ package wire
 import (
 	"errors"
 	"strings"
-
-	"github.com/AhmedAshraf780/wire/internals/utils"
 )
 
 type route struct {
@@ -43,7 +41,7 @@ func GET[T, V any](app *Application, path string, callbacks ...func(*Request[T],
 			Path:     path,
 			Callback: callback,
 		}
-		app.middlewares[utils.GenerateHandlerKey("GET", path)] = append(app.middlewares[path], handler)
+		app.middlewares[generateHandlerKey("GET", path)] = append(app.middlewares[path], handler)
 	}
 
 	handler := &wireHandler[T, V]{
@@ -68,7 +66,7 @@ func POST[T, V any](app *Application, path string, callbacks ...func(*Request[T]
 			Path:     path,
 			Callback: callback,
 		}
-		app.middlewares[utils.GenerateHandlerKey("POST", path)] = append(app.middlewares[path], handler)
+		app.middlewares[generateHandlerKey("POST", path)] = append(app.middlewares[path], handler)
 	}
 
 	handler := &wireHandler[T, V]{
@@ -92,7 +90,7 @@ func PUT[T, V any](app *Application, path string, callbacks ...func(*Request[T],
 			Path:     path,
 			Callback: callback,
 		}
-		app.middlewares[utils.GenerateHandlerKey("PUT", path)] = append(app.middlewares[path], handler)
+		app.middlewares[generateHandlerKey("PUT", path)] = append(app.middlewares[path], handler)
 	}
 
 	handler := &wireHandler[T, V]{
@@ -117,7 +115,7 @@ func PATCH[T, V any](app *Application, path string, callbacks ...func(*Request[T
 			Path:     path,
 			Callback: callback,
 		}
-		app.middlewares[utils.GenerateHandlerKey("PATCH", path)] = append(app.middlewares[path], handler)
+		app.middlewares[generateHandlerKey("PATCH", path)] = append(app.middlewares[path], handler)
 	}
 
 	handler := &wireHandler[T, V]{
@@ -142,7 +140,7 @@ func DELETE[T, V any](app *Application, path string, callbacks ...func(*Request[
 			Path:     path,
 			Callback: callback,
 		}
-		app.middlewares[utils.GenerateHandlerKey("DELETE", path)] = append(app.middlewares[path], handler)
+		app.middlewares[generateHandlerKey("DELETE", path)] = append(app.middlewares[path], handler)
 	}
 
 	handler := &wireHandler[T, V]{

@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/AhmedAshraf780/wire/internals/utils"
 )
 
 func parseRequestLine(line string) ([]string, error) {
@@ -73,7 +71,7 @@ func readAndParseRequest(app *Application, reader *bufio.Reader, client Client) 
 	if found {
 		request.Query = parseQuery(query)
 	}
-	key := utils.GenerateHandlerKey(request.Method, path)
+	key := generateHandlerKey(request.Method, path)
 	_, ok := app.staticRoutes[key]
 	orgpath := request.Path
 	if !ok {
