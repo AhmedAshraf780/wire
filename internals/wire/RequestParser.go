@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,7 +13,7 @@ import (
 	"github.com/AhmedAshraf780/wire/internals/utils"
 )
 
-func ParseRequestLine(line string) ([]string, error) {
+func parseRequestLine(line string) ([]string, error) {
 	line = strings.TrimRight(line, "\r\n")
 	tokens := strings.Fields(line)
 	if len(tokens) < 3 {
@@ -23,7 +22,7 @@ func ParseRequestLine(line string) ([]string, error) {
 	return tokens, nil
 }
 
-func ParseHeader(line string) (string, string, error) {
+func parseHeader(line string) (string, string, error) {
 	parts := strings.SplitN(line, ":", 2)
 	if len(parts) != 2 {
 		return "", "", errors.New(fmt.Sprintf("Invalid Header: %s", line))
@@ -33,83 +32,7 @@ func ParseHeader(line string) (string, string, error) {
 	return key, value, nil
 }
 
-func ExtractParams(path, reqPath string) (map[string]string, error) {
-	patternParts := strings.Split(strings.Trim(path, "/"), "/")
-	pathParts := strings.Split(strings.Trim(reqPath, "/"), "/")
-
-	params := make(map[string]string)
-
-	if len(patternParts) != len(pathParts) {
-		return nil, errors.New(fmt.Sprintf("Invalid Request Path: %s", path))
-	}
-
-	for i := range patternParts {
-		if strings.HasPrefix(patternParts[i], ":") {
-			key := patternParts[i][1:] // Remove ':'
-			params[key] = pathParts[i]
-		} else if patternParts[i] != pathParts[i] {
-			return nil, errors.New(fmt.Sprintf("Invalid Request Path: %s", path))
-		}
-	}
-	return params, nil
-}
-
-//func parseQuery(path string) map[string]string {
-//	params := make(map[string]string)
-//
-//	idx := strings.Index(path, "?")
-//	if idx == -1 {
-//		return params
-//	}
-//
-//	query := path[idx+1:]
-//
-//	for _, pair := range strings.Split(query, "&") {
-//		if pair == "" {
-//			continue
-//		}
-//
-//		kv := strings.SplitN(pair, "=", 2)
-//
-//		if len(kv) == 1 {
-//			params[kv[0]] = ""
-//			continue
-//		}
-//
-//		params[kv[0]] = kv[1]
-//	}
-//
-//	return params
-//}
-
-func GenerateDynamicPath(path string) string {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	for i, part := range parts {
-		if strings.HasPrefix(part, ":") {
-			parts[i] = "*"
-		}
-	}
-	return strings.Join(parts, "/")
-}
-
-func ValidParamsPath(path, reqPath string) bool {
-	pathParts := strings.Split(reqPath, "/")
-	reqPathParts := strings.Split(reqPath, "/")
-	if len(pathParts) != len(reqPathParts) {
-		return false
-	}
-
-	for i := range pathParts {
-		if pathParts[i] != reqPathParts[i] {
-			if pathParts[i] != "*" {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func StaticPath(path string) bool {
+func staticPath(path string) bool {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	for _, part := range parts {
 		if strings.HasPrefix(part, ":") {
@@ -118,26 +41,28 @@ func StaticPath(path string) bool {
 	}
 	return true
 }
-func ReadAndParseRequest(app *Application, reader *bufio.Reader, conn net.Conn) (*Request[[]byte], string, bool) {
+func readAndParseRequest(app *Application, reader *bufio.Reader, client Client) (*Request[[]byte], string, bool) {
 	line, err := reader.ReadString('\n')
 	request := &Request[[]byte]{
-		Headers: map[string]string{},
+		Headers: map[string][]string{},
 	}
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
-			println("END OF FILE(CONN ENDED): ", err)
+			client.conn.Close()
+			client.closed = true
+			return nil, "", false
 		}
-		return nil, "", false
+
+		resp := MakeResponse(http.StatusBadRequest, BadRequest, []byte(BadRequest), map[string][]string{}, request.Version)
+		client.conn.Write(resp)
+		return nil, "", true
 	}
 
-	tokens, err := ParseRequestLine(line)
+	tokens, err := parseRequestLine(line)
 	if err != nil {
-		// TODO: send http response
-		err = utils.WriteResponse(conn, http.StatusBadRequest, "Something went wrong", []byte("Something went wrong"), map[string]string{}, request.Version)
-		if err != nil {
-			println("FAILED TO WRITE RESPONSE:", err)
-		}
-		return nil, "", false
+		resp := MakeResponse(http.StatusBadRequest, BadRequest, []byte(BadRequest), map[string][]string{}, request.Version)
+		client.conn.Write(resp)
+		return nil, "", true
 	}
 
 	request.Method = tokens[0]
@@ -159,11 +84,11 @@ func ReadAndParseRequest(app *Application, reader *bufio.Reader, conn net.Conn) 
 			orgpath = org
 			goto label1
 		}
-		err := utils.WriteResponse(conn, http.StatusNotFound, "No method exists", []byte("Method or path not found"), map[string]string{}, request.Version)
-		if err != nil {
-			println("FAILED TO WRITE RESPONSE:", err)
-		}
-		return nil, "", false
+
+		resp := MakeResponse(http.StatusNotFound, NotFound, []byte(NotFound), map[string][]string{}, request.Version)
+		client.conn.Write(resp)
+
+		return nil, "", true
 	}
 label1:
 	// request headers
@@ -171,39 +96,50 @@ label1:
 		line, err = reader.ReadString('\n')
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				println("END OF FILE(CONN ENDED): ", err)
+				client.conn.Close()
+				client.closed = true
+				return nil, "", false
 			}
-			return nil, "", false
+			resp := MakeResponse(http.StatusBadRequest, BadRequest, []byte(BadRequest), map[string][]string{}, request.Version)
+			client.conn.Write(resp)
+			return nil, "", true
 		}
 		if line == "\r\n" {
 			break
 		}
-		key, value, err := ParseHeader(line)
+		key, value, err := parseHeader(line)
 		if err != nil {
 			log.Println(err)
-			// TODO: send http response
-			err = utils.WriteResponse(conn, http.StatusBadRequest, "Something went wrong", []byte("Something went wrong"), map[string]string{}, request.Version)
-			if err != nil {
-				println("FAILED TO WRITE RESPONSE:", err)
-			}
-			return nil, "", false
+			resp := MakeResponse(http.StatusBadRequest, BadRequest, []byte(BadRequest), map[string][]string{}, request.Version)
+			client.conn.Write(resp)
+			return nil, "", true
 		}
-		request.Headers[key] = value
+		request.Headers[key] = append(request.Headers[key], value)
+		if key == HeaderCookie {
+			cookies := parseCookies(value)
+			request.Cookies = cookies
+		}
 	}
 	// request body
-	lengthStr, _ := request.Headers["Content-Length"]
+	lengthStr := ""
+	if len(request.Headers[HeaderContentLength]) > 0 {
+		lengthStr = request.Headers[HeaderContentLength][0]
+	}
 	length, _ := strconv.Atoi(lengthStr)
 	body := make([]byte, length)
 	_, err = io.ReadFull(reader, body)
 	if err != nil {
 		log.Println(err)
-		err = utils.WriteResponse(conn, http.StatusBadRequest, "Something went wrong", []byte("Something went wrong"), map[string]string{}, request.Version)
-		if err != nil {
-			println("FAILED TO WRITE RESPONSE:", err)
-		}
-		return nil, "", false
+		resp := MakeResponse(http.StatusBadRequest, BadRequest, []byte(BadRequest), map[string][]string{}, request.Version)
+		client.conn.Write(resp)
+		return nil, "", true
 	}
 	request.Body = body
 	request.Context = make(map[string]interface{})
+	// check if connection is alive
+	if len(request.Headers[HeaderConnection]) > 0 && request.Headers[HeaderConnection][0] == "close" {
+		client.closed = true
+		return nil, "", true
+	}
 	return request, orgpath, true
 }

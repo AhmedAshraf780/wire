@@ -21,29 +21,10 @@ type responseType struct {
 var Users []User
 
 func main() {
-	// wire
 	app := wire.NewApplication()
-	wire.POST(app, "/users", createUser)
-	app.Listen(3000)
-	//http.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
-	//	var u User
-	//	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-	//		http.Error(w, err.Error(), http.StatusBadRequest)
-	//	}
-	//	Users = append(Users, u)
-	//	w.Write([]byte("Users were added successfully"))
-	//})
-	//http.ListenAndServe(":3000", nil)
+	wire.GET(app, "/users", getUsers)
+	app.Listen(4000)
 }
-
-func createUser(req *wire.Request[User], resp *wire.Response[responseType]) error {
-	Users = append(Users, User{
-		Name:  req.Body.Name,
-		Email: req.Body.Email,
-	})
-	return resp.Write(http.StatusCreated, responseType{
-		Ok:      true,
-		Message: "user created",
-		Users:   Users,
-	})
+func getUsers(req *wire.Request[wire.EmptyBody], resp *wire.Response[responseType]) error {
+	return resp.Write(http.StatusOK, responseType{Ok: true, Users: []User{{Name: "ahmed", Email: "ashraf"}}})
 }

@@ -11,61 +11,66 @@ import (
 	"github.com/AhmedAshraf780/wire/internals/utils"
 )
 
+type Client struct {
+	conn   net.Conn
+	closed bool
+}
+
 func (app *Application) Listen(port int) {
 	addr := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		panic(err)
+		println("Couldn't accept")
+		return
 	}
 
 	defer listener.Close()
 
 	log.Println("Listening on " + addr)
-	jobs := make(chan net.Conn, 1000)
 
-	for i := 0; i < 200; i++ {
-		go func() {
-			for conn := range jobs {
-				app.handleConnection(conn)
-			}
-		}()
-	}
-
+	i := 0
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			println("CAN'T ACCEPT:", err)
 			continue
 		}
-		jobs <- conn // blocks when pool is saturated
+
+		go app.handleConnection(Client{conn, false})
+		println("Accepting connection ", i)
+		i++
 	}
 }
 
-func (app *Application) handleConnection(conn net.Conn) {
-	defer conn.Close()
-	reader := bufio.NewReader(conn)
+func (app *Application) handleConnection(client Client) {
+	defer func() {
+		client.conn.Close()
+	}()
+	reader := bufio.NewReader(client.conn)
 	for {
-		conn.SetReadDeadline(time.Now().Add(40 * time.Second))
-		conn.SetWriteDeadline(time.Now().Add(40 * time.Second))
-		// now the request is ready
-		request, orgPath, ok := ReadAndParseRequest(app, reader, conn)
+		client.conn.SetDeadline(time.Now().Add(30 * time.Second))
+		request, orgPath, ok := readAndParseRequest(app, reader, client)
 		if !ok {
+			client.closed = true
 			return
 		}
 		if request == nil {
 			continue
 		}
-		app.handleRequest(request, orgPath, conn)
+		app.handleRequest(request, orgPath, client)
+		if client.closed {
+			return
+		}
 	}
 }
 
-func (app *Application) handleRequest(request *Request[[]byte], path string, conn net.Conn) {
+func (app *Application) handleRequest(request *Request[[]byte], path string, client Client) {
 	// run global middlewares first
 	resp := &Response[any]{
-		Headers: make(map[string]string),
+		Headers: make(map[string][]string),
 	}
 	for _, mid := range app.globalMiddlewares {
-		err := mid.Handle(request, resp, conn)
+		err := mid.Handle(request, resp, client)
 		if err != nil && errors.Is(err, ErrNext) {
 			continue
 		}
@@ -80,7 +85,7 @@ func (app *Application) handleRequest(request *Request[[]byte], path string, con
 		return
 	}
 	for _, middleware := range middlewares {
-		err := middleware.Handle(request, resp, conn)
+		err := middleware.Handle(request, resp, client)
 		if err != nil && errors.Is(err, ErrNext) {
 			continue
 		}

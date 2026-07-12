@@ -50,7 +50,7 @@ func GET[T, V any](app *Application, path string, callbacks ...func(*Request[T],
 		Path:     path,
 		Callback: callbacks[len(callbacks)-1],
 	}
-	if StaticPath(path) {
+	if staticPath(path) {
 		app.staticRoutes["GET:"+path] = handler
 	} else {
 		app.dynamicRoutes = append(app.dynamicRoutes, route{
@@ -75,7 +75,7 @@ func POST[T, V any](app *Application, path string, callbacks ...func(*Request[T]
 		Path:     path,
 		Callback: callbacks[len(callbacks)-1],
 	}
-	if StaticPath(path) {
+	if staticPath(path) {
 		app.staticRoutes["POST:"+path] = handler
 	} else {
 		app.dynamicRoutes = append(app.dynamicRoutes, route{
@@ -99,7 +99,7 @@ func PUT[T, V any](app *Application, path string, callbacks ...func(*Request[T],
 		Path:     path,
 		Callback: callbacks[len(callbacks)-1],
 	}
-	if StaticPath(path) {
+	if staticPath(path) {
 		app.staticRoutes["PUT:"+path] = handler
 	} else {
 		app.dynamicRoutes = append(app.dynamicRoutes, route{
@@ -124,7 +124,7 @@ func PATCH[T, V any](app *Application, path string, callbacks ...func(*Request[T
 		Path:     path,
 		Callback: callbacks[len(callbacks)-1],
 	}
-	if StaticPath(path) {
+	if staticPath(path) {
 		app.staticRoutes["PATCH:"+path] = handler
 	} else {
 		app.dynamicRoutes = append(app.dynamicRoutes, route{
@@ -149,7 +149,7 @@ func DELETE[T, V any](app *Application, path string, callbacks ...func(*Request[
 		Path:     path,
 		Callback: callbacks[len(callbacks)-1],
 	}
-	if StaticPath(path) {
+	if staticPath(path) {
 		app.staticRoutes["DELETE:"+path] = handler
 	} else {
 		app.dynamicRoutes = append(app.dynamicRoutes, route{
